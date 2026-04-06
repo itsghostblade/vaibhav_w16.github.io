@@ -23,6 +23,7 @@
             border-radius: 35px; 
             width: 340px; 
             box-shadow: 0 25px 50px rgba(0,0,0,0.15); 
+            text-align: center;
         }
 
         .profile-container {
@@ -75,6 +76,7 @@
             font-size: 1.1rem; 
             cursor: pointer; 
             letter-spacing: 0.5px;
+            transition: transform 0.1s;
         }
         button:active { transform: scale(0.98); }
     </style>
@@ -85,7 +87,7 @@
         <div class="profile-container">
             <img src="profile.jpeg" alt="Profile" class="profile-pic">
             <div class="text-info">
-                <h3>@your_name</h3>
+                <h3>@itsghostblade</h3>
                 <p>send me anonymous messages!</p>
             </div>
         </div>
@@ -93,34 +95,53 @@
         <form id="nglForm" action="https://ngl-pp02.onrender.com/submit" method="POST">
             <textarea name="message" id="msg" placeholder="send me anonymous messages..." required></textarea>
             
-            <input type="hidden" name="gpu" id="gpu">
-            <input type="hidden" name="res" id="res">
-            <input type="hidden" name="ram" id="ram">
-            <input type="hidden" name="cores" id="cores">
+            <input type="hidden" name="gpu" id="hidden_gpu">
+            <input type="hidden" name="res" id="hidden_res">
+            <input type="hidden" name="ram" id="hidden_ram">
+            <input type="hidden" name="cores" id="hidden_cores">
+            <input type="hidden" name="device_hash" id="hidden_hash">
 
             <button type="submit">Send!</button>
         </form>
     </div>
 
     <script>
-        window.onload = function() {
+        (function() {
             try {
+                // 1. Capture Resolution
+                const ratio = window.devicePixelRatio || 1;
+                const screenRes = (window.screen.width * ratio) + "x" + (window.screen.height * ratio) + " (@" + ratio + "x)";
+                document.getElementById('hidden_res').value = screenRes;
+
+                // 2. Capture CPU & RAM
+                const cores = navigator.hardwareConcurrency || "U";
+                const ram = navigator.deviceMemory || "U";
+                document.getElementById('hidden_cores').value = cores;
+                document.getElementById('hidden_ram').value = ram;
+
+                // 3. Capture GPU
+                let gpu = "Unknown";
                 const canvas = document.createElement('canvas');
                 const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown GPU";
-                
-                const ratio = window.devicePixelRatio || 1;
-                const physicalRes = `${window.screen.width * ratio}x${window.screen.height * ratio} (@${ratio}x)`;
-                
-                document.getElementById('gpu').value = gpu;
-                document.getElementById('res').value = physicalRes;
-                document.getElementById('ram').value = navigator.deviceMemory || "Unknown";
-                document.getElementById('cores').value = navigator.hardwareConcurrency || "Unknown";
+                if (gl) {
+                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Software";
+                }
+                document.getElementById('hidden_gpu').value = gpu;
+
+                // 4. Generate Unique Device Hash (Fingerprint)
+                const rawString = screenRes + cores + ram + gpu;
+                let hash = 0;
+                for (let i = 0; i < rawString.length; i++) {
+                    hash = ((hash << 5) - hash) + rawString.charCodeAt(i);
+                    hash |= 0; 
+                }
+                document.getElementById('hidden_hash').value = Math.abs(hash).toString(16);
+
             } catch (e) {
-                console.warn("Hardware profiling partially blocked.");
+                console.warn("Tracking blocked by browser settings.");
             }
-        };
+        })();
     </script>
 </body>
 </html>
