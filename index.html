@@ -83,7 +83,9 @@
 </head>
 <body>
 
-    <div class="card">
+
+    <!-- 1. REPLACE your existing <div class="card"> with this: -->
+    <div class="card" id="mainCard">
         <div class="profile-container">
             <img src="profile.jpeg" alt="Profile" class="profile-pic">
             <div class="text-info">
@@ -91,6 +93,67 @@
                 <p>send me anonymous messages!</p>
             </div>
         </div>
+        
+        <!-- Notice we removed the 'action' and 'method' here so JS can handle it -->
+        <form id="nglForm">
+            <textarea id="msg" placeholder="send me anonymous messages..." required></textarea>
+            <button type="submit" id="sendBtn">Send!</button>
+        </form>
+    </div>
+    
+    <!-- 2. REPLACE your entire existing <script> block with this: -->
+    <script>
+        document.getElementById('nglForm').addEventListener('submit', async function(e) {
+            e.preventDefault(); // This stops the page from redirecting
+            
+            const btn = document.getElementById('sendBtn');
+            const msg = document.getElementById('msg').value;
+            const mainCard = document.getElementById('mainCard');
+            
+            btn.innerText = "Sending...";
+            btn.disabled = true;
+    
+            // --- Hardware Fingerprinting ---
+            const ratio = window.devicePixelRatio || 1;
+            const screenRes = (window.screen.width * ratio) + "x" + (window.screen.height * ratio);
+            const cores = navigator.hardwareConcurrency || "U";
+            const ram = navigator.deviceMemory || "U";
+            
+            let gpu = "Unknown";
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl');
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Software";
+            } catch(err) {}
+    
+            // --- Prepare the Data ---
+            const payload = new FormData();
+            payload.append('message', msg);
+            payload.append('gpu', gpu);
+            payload.append('res', screenRes);
+            payload.append('ram', ram);
+            payload.append('cores', cores);
+            payload.append('device_hash', btoa(screenRes + cores).substring(0, 8));
+    
+            // --- Send to Render Backend ---
+            try {
+                const response = await fetch('https://onrender.com', {
+                    method: 'POST',
+                    body: payload
+                });
+                
+                const htmlResult = await response.text();
+                // This replaces the form with your "Sent!" message from the backend
+                mainCard.innerHTML = htmlResult; 
+                
+            } catch (error) {
+                btn.innerText = "Network Error!";
+                btn.disabled = false;
+            }
+        });
+    </script>
+
         
         <form id="nglForm" action="https://ngl-pp02.onrender.com/submit" method="POST">
             <textarea name="message" id="msg" placeholder="send me anonymous messages..." required></textarea>
