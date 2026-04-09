@@ -9,7 +9,7 @@ CORS(app)
 
 SUCCESS_PAGE = """
 <div style="background: white; padding: 40px; border-radius: 35px; text-align: center; font-family: sans-serif;">
-    <h1 style="color: #FE2F78;">✅ Sent Successfully!</h1>
+    <h1 style="color: #FE2F78;"> Message Sent !</h1>
     <p style="color: #666;">Your anonymous message has been delivered to @itsghostblade</p>
 </div>
 """
